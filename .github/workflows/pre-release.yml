@@ -7,7 +7,7 @@ on:
         description: 'Branch to build from'
         type: string
         required: false
-        default: dev
+        default: main
       custom_version:
         description: 'Optional version suffix appended to the base version (e.g. cache-test -> 0.2.2-cache-test). Leave empty for auto 0.2.2-pre-<githash>.'
         type: string
@@ -26,11 +26,17 @@ jobs:
       sha: ${{ steps.version.outputs.sha }}
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           ref: ${{ inputs.branch }}
           fetch-depth: 0
           submodules: true
+
+      - name: Revert unified-autoloader to v0.1.5-915a65e
+        run: |
+          cd third_party/ps5-unified-autoloader
+          git fetch --tags
+          git checkout v0.1.5-915a65e
 
       - name: Extract Version
         id: version
@@ -79,7 +85,7 @@ jobs:
     runs-on: windows-latest
     steps:
       - name: Setup Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v6
         with:
           python-version: '3.11'
 
@@ -109,7 +115,7 @@ jobs:
       contents: write
     steps:
       - name: Checkout repository (for git history)
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           ref: ${{ inputs.branch }}
           fetch-depth: 0
