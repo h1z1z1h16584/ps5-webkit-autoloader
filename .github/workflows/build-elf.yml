@@ -1,0 +1,48 @@
+name: Build ELF Only
+
+on:
+  workflow_dispatch:
+    inputs:
+      branch:
+        description: 'Branch to build from'
+        type: string
+        required: false
+        default: main
+
+jobs:
+  build-elf:
+    runs-on: ubuntu-latest
+    env:
+      BUILD_TYPE: dev
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v5
+        with:
+          ref: ${{ inputs.branch }}
+          fetch-depth: 0
+          submodules: recursive
+
+      - name: Revert unified-autoloader to v0.1.5-915a65e
+        run: |
+          cd third_party/ps5-unified-autoloader
+          git fetch --tags
+          git checkout v0.1.5-915a65e
+
+      - name: Extract Version
+        id: version
+        run: |
+          FULL=$(python3 tools/gen_version.py --print)
+          echo "Full version: $FULL"
+          echo "full_version=${FULL}" >> $GITHUB_OUTPUT
+
+      - name: Build Installer ELF
+        run: |
+          chmod +x build_release.sh
+          ./build_release.sh
+          
+      - name: Upload ELF Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: webkit-autoloader-elf
+          path: webkit-autoloader-installer_v${{ steps.version.outputs.full_version }}.elf
+          retention-days: 5
