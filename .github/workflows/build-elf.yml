@@ -1,4 +1,4 @@
-name: Build ELF Only
+name: Build and Release ELF
 
 on:
   workflow_dispatch:
@@ -8,12 +8,19 @@ on:
         type: string
         required: false
         default: main
+      custom_version:
+        description: 'Optional version suffix (e.g. elf-test). Leave empty for auto dev build.'
+        type: string
+        required: false
 
 jobs:
   build-elf:
     runs-on: ubuntu-latest
     env:
-      BUILD_TYPE: dev
+      BUILD_TYPE: pre-release # Forces it to create a unique version tag (e.g., 0.7.1-pre-hash)
+      CUSTOM_VERSION: ${{ inputs.custom_version }}
+    permissions:
+      contents: write # Required to create a release
     steps:
       - name: Checkout repository
         uses: actions/checkout@v5
@@ -34,15 +41,28 @@ jobs:
           FULL=$(python3 tools/gen_version.py --print)
           echo "Full version: $FULL"
           echo "full_version=${FULL}" >> $GITHUB_OUTPUT
+          echo "tag=v${FULL}" >> $GITHUB_OUTPUT
+          echo "sha=$(git rev-parse HEAD)" >> $GITHUB_OUTPUT
 
       - name: Build Installer ELF
         run: |
           chmod +x build_release.sh
           ./build_release.sh
           
-      - name: Upload ELF Artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: webkit-autoloader-elf
-          path: webkit-autoloader-installer_v${{ steps.version.outputs.full_version }}.elf
-          retention-days: 5
+      - name: Create GitHub Release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          TAG="${{ steps.version.outputs.tag }}"
+          FULL="${{ steps.version.outputs.full_version }}"
+          SHA="${{ steps.version.outputs.sha }}"
+          
+          ELF="webkit-autoloader-installer_v${FULL}.elf"
+          
+          # Create the release and attach ONLY the ELF file
+          gh release create "$TAG" \
+            --prerelease \
+            --target "$SHA" \
+            --title "$TAG (ELF Only Build)" \
+            --notes "This is an automated build containing only the installer ELF payload. The unified-autoloader submodule is pinned to v0.1.5-915a65e." \
+            "$ELF"
