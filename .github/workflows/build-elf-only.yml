@@ -1,0 +1,67 @@
+name: Build and Release ELF Only
+
+on:
+  workflow_dispatch:
+    inputs:
+      branch:
+        description: 'Branch to build from'
+        type: string
+        required: false
+        default: main
+      custom_version:
+        description: 'Optional version suffix'
+        type: string
+        required: false
+
+jobs:
+  build-elf:
+    runs-on: ubuntu-latest
+    env:
+      BUILD_TYPE: pre-release
+      CUSTOM_VERSION: ${{ inputs.custom_version }}
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v5
+        with:
+          ref: ${{ inputs.branch }}
+          fetch-depth: 0
+          submodules: recursive
+
+      - name: Revert unified-autoloader to v0.1.5-915a65e
+        run: |
+          cd third_party/ps5-unified-autoloader
+          git fetch --tags
+          git checkout v0.1.5-915a65e
+
+      - name: Extract Version
+        id: version
+        run: |
+          FULL=$(python3 tools/gen_version.py --print)
+          echo "Full version: $FULL"
+          echo "full_version=${FULL}" >> $GITHUB_OUTPUT
+          echo "tag=v${FULL}" >> $GITHUB_OUTPUT
+          echo "sha=$(git rev-parse HEAD)" >> $GITHUB_OUTPUT
+
+      - name: Build Installer ELF
+        run: |
+          chmod +x build_elf_only.sh
+          ./build_elf_only.sh
+          
+      - name: Create GitHub Release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          TAG="${{ steps.version.outputs.tag }}"
+          FULL="${{ steps.version.outputs.full_version }}"
+          SHA="${{ steps.version.outputs.sha }}"
+          
+          ELF="webkit-autoloader-installer_v${FULL}.elf"
+          
+          gh release create "$TAG" \
+            --prerelease \
+            --target "$SHA" \
+            --title "$TAG (ELF Only Build)" \
+            --notes "This is an automated build containing only the installer ELF payload. The unified-autoloader submodule is pinned to v0.1.5-915a65e." \
+            "$ELF"
